@@ -56,11 +56,12 @@ public:
     std::vector<char> read_fixed(size_t length)
     {
         std::vector<char> request;
+        request.reserve(length);
 
         while (request.size() < length)
         {
 
-            if (pos_ > bufferlen_)
+            if (pos_ >= buffer_.size())
             {
                 refill_buffer();
                 if (bufferlen_ == 0)

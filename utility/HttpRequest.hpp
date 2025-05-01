@@ -7,11 +7,11 @@
 
 class HttpRequest
 {
+public:
     std::string start_line;
     std::map<std::string, std::string> headers;
     std::vector<char> body;
 
-public:
     HttpRequest parse(int fd)
     {
         HttpRequestReader reader(fd);
@@ -20,7 +20,7 @@ public:
         std::string header = reader.read_until("\r\n\r\n");
         parse_start_line(header);
         parse_header_content(header);
-
+        
         // parsing body
 
         if (this->headers.count("transfer-encoding")) {
@@ -51,6 +51,7 @@ private:
             size_t end = data.find("\r\n",start);
             if (end == std::string::npos) break;
             std::string line = data.substr(start, end - start);
+            if (line.empty()) break; // End of headers
             size_t colon = line.find(":");
             if (colon == std::string::npos) continue;
 
