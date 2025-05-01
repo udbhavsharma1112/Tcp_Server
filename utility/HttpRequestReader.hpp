@@ -18,7 +18,7 @@ class HttpRequestReader
 public:
     HttpRequestReader(int fd, size_t bufferSize = DEFAULT_BUFSIZE) : fd(fd), buffer_(bufferSize) {}
 
-    std::string read_until(std::string &delimiter) //
+    std::string read_until(std::string delimiter) //
     {
         std::string request;
         while (true)
@@ -79,6 +79,37 @@ public:
             pos_ += to_copy;
         }
         return request;
+    }
+
+    std::vector<char> chunked_read(){
+        std::vector<char>request;
+        while (true){
+
+            // read a line
+            std::string delimiter = "\r\n";
+            std::string line = read_until(delimiter);
+            // remove delimiter
+            line.resize(line.size()-2);
+
+            unsigned long chunk_size;
+            try{
+                chunk_size = std::stoul(line, nullptr, 16);   // decode the hex(16 base) to integer 
+            }catch(...){
+                throw std::runtime_error("[ERROR]: erro while decoding hex to integer");
+            }
+            
+            if(chunk_size == 0){
+                read_until(delimiter); // last
+                break;
+            }
+
+            auto chunk = read_fixed(chunk_size);
+            request.insert(request.end(), chunk.begin(),chunk.end());
+            read_until(delimiter);
+        }
+
+        return request;
+
     }
 
 private:
