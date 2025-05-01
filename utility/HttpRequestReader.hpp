@@ -41,7 +41,7 @@ public:
             {
                 // found delimiter
                 size_t len = it - bufferPtr + delimiter.size();
-                request.append(bufferlen_, len);
+                request.append(bufferPtr, len);
                 pos_ += len;
                 return request;
             }
