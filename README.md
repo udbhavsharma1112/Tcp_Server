@@ -49,5 +49,4 @@ This was developed as a hands-on project to strengthen my understanding of OS an
 
 ---
 
-## 📁 Directory Structure
 
