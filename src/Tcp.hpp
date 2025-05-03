@@ -7,24 +7,42 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <mutex>
 #include <unistd.h>
 #include "../utility/HttpRequest.hpp"
 
 class TcpServer{
-    int listener_fd;
-    int port;
-    void close_socket(int fd){
-        if(fd>=0){
-            close(fd);
+private:
+    bool send_all(int client_fd, const char *data, size_t size) {
+        size_t total_sent = 0;
+        while (total_sent < size) {
+            ssize_t sent = send(client_fd, data + total_sent, size - total_sent, 0);
+            if (sent < 0) {
+                log_error("Failed to send data: " + std::string(strerror(errno)));
+                return false;
+            }
+            total_sent += sent;
         }
+        return true;
     }
+    void handle_error(int client_fd, const std::string &error_message){
+        log_error(error_message);
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: " + std::to_string(error_message.size()) + "\r\n\r\n" + error_message;
+        send(client_fd, response.c_str(), response.size(), 0);
+    }
+    void handle_request(int client_fd, const std::string &error_message){
+        log_error(error_message);
+        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: " + std::to_string(error_message.size()) + "\r\n\r\n" + error_message;
+        send(client_fd, response.c_str(), response.size(), 0);
+    }
+
 public:
     TcpServer(int port): listener_fd(-1), port(port){}
     ~TcpServer(){
         close_socket(listener_fd);
     }
     
-    void listen_request(){
+    virtual void listen_request(){
         listener_fd = socket(AF_INET, SOCK_STREAM, 0);
         //AF_INET means IPv4
         //SOCK_STREAM means TCP
@@ -56,7 +74,7 @@ public:
             throw std::runtime_error("[ERROR]: error while listening socket");
         }
 
-        std::cout << "[INFO]: Listening on port " << port << std::endl;
+        log("Listening on port " + std::to_string(port));
     }
     
     int accept_request(){
@@ -66,11 +84,11 @@ public:
         if(client_fd < 0){
             throw std::runtime_error("[ERROR]: error while accepting connection");
         }
-        std::cout << "[INFO]: Accepted connection from " << inet_ntoa(client_addr.sin_addr) << ":" << ntohs(client_addr.sin_port) << std::endl;
+        log("Accepted connection from " + std::string(inet_ntoa(client_addr.sin_addr)) + ":" + std::to_string(ntohs(client_addr.sin_port)));
         return client_fd;
     }
 
-    void run(){
+    virtual void run(){
         while(true){
             int client_fd = -1;
             try{
@@ -78,19 +96,32 @@ public:
                 handle_connection(client_fd); 
                 close_socket(client_fd);
             } catch(const std::exception &e){
-                std::cerr << "[ERROR]: " << e.what() << std::endl;
+                log_error("Exception: " + std::string(e.what()));
                 handle_request(client_fd, e.what());
                 close_socket(client_fd);
             } catch(...){
-                std::cerr << "[ERROR]: Unknown error" << std::endl;
+                log_error("Unknown error");
                 handle_request(client_fd, "Unknown error");
                 close_socket(client_fd);
             }
         }
     }
 
-private:
-    void handle_connection(int client_fd){
+protected:
+    // This function should be overridden by derived classes to handle the connection
+    int listener_fd;
+    int port;
+    std::mutex log_mutex;
+    void log_error(const std::string &message) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        std::cerr<< "[ERROR]: " << message << std::endl;
+    }
+    void log(const std::string &message) {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        std::cout << "[INFO]: " << message << std::endl;
+    }
+
+    virtual void handle_connection(int client_fd) {
         try {
 
             HttpRequest request;
@@ -110,32 +141,26 @@ private:
             }
 
         } catch(const std::exception &e) {
-            std::cerr << "Exception : " << e.what() << "\n" ;
+            log_error("Exception: " + std::string(e.what()));
         }
     }
 
-    bool send_all(int client_fd, const char *data, size_t size) {
-        size_t total_sent = 0;
-        while (total_sent < size) {
-            ssize_t sent = send(client_fd, data + total_sent, size - total_sent, 0);
-            if (sent < 0) {
-                std::cerr << "[ERROR]: Failed to send data: " << strerror(errno) << std::endl;
-                return false;
-            }
-            total_sent += sent;
+
+    virtual void close_socket(int fd){
+        if(fd>=0){
+            close(fd);
         }
-        return true;
     }
-    void handle_error(int client_fd, const std::string &error_message){
-        std::cerr << "[ERROR]: " << error_message << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: " + std::to_string(error_message.size()) + "\r\n\r\n" + error_message;
-        send(client_fd, response.c_str(), response.size(), 0);
-    }
-    void handle_request(int client_fd, const std::string &error_message){
-        std::cerr << "[ERROR]: " << error_message << std::endl;
-        std::string response = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: " + std::to_string(error_message.size()) + "\r\n\r\n" + error_message;
-        send(client_fd, response.c_str(), response.size(), 0);
-    }
+
+    virtual void stop() {
+        if (listener_fd >= 0) {
+            shutdown(listener_fd, SHUT_RD);
+            //shutdown means to close the socket for reading
+            //SHUT_RD means to close the socket for reading
+            //SHUT_WR means to close the socket for writing
+            //SHUT_RDWR means to close the socket for reading and writing
+        }
+   }
 
 };
 
